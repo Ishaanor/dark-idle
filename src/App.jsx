@@ -174,55 +174,85 @@ const NAME_TO_SPRITE = {
   _boss: "body_redF.png",
 };
 
-function EnemyArt({ enemy, atlas, size = 112 }) {
+/* ---------- Art components ---------- */
+function EnemyArt({ enemy, atlas }) {
   const [srcIdx, setSrcIdx] = useState(0);
   const base = slug(enemy.name);
-  const prefix = "/";
-  const exts = ["webp", "png", "gif", "jpg", "jpeg"];
+  const exts = ["gif", "webp", "png", "jpg", "jpeg"];
   const candidates = [
-    ...exts.map((ext) => `${prefix}sprites/${base}.${ext}`),
-    ...(enemy.isBoss ? ["webp", "png", "jpg", "jpeg"].map((ext) => `${prefix}sprites/boss.${ext}`) : []),
+    ...exts.map((ext) => `/sprites/${base}.${ext}`),
+    ...(enemy.isBoss ? exts.map((ext) => `/sprites/boss.${ext}`) : []),
   ];
-  useEffect(() => {
-    setSrcIdx(0);
-  }, [enemy.name]);
+  useEffect(() => setSrcIdx(0), [enemy.name]);
   const src = candidates[srcIdx] || null;
+
   if (src) {
     return (
       <img
         src={src}
         alt={enemy.name}
-        width={size}
-        height={size}
-        className="w-28 h-28 flex-none object-contain rounded-full shadow-inner"
+        className="absolute inset-0 w-full h-full object-cover rounded-full"
         style={{ imageRendering: "pixelated" }}
         onError={() => setSrcIdx((i) => i + 1)}
       />
     );
   }
+
   if (atlas) {
     const key = NAME_TO_SPRITE[enemy.name] || (enemy.isBoss ? NAME_TO_SPRITE._boss : null);
     const sub = key ? atlas.subs[key] : null;
     if (sub) {
       const style = {
-        width: size,
-        height: size,
         backgroundImage: `url(${atlas.imagePath})`,
         backgroundRepeat: "no-repeat",
         backgroundPosition: `-${sub.x}px -${sub.y}px`,
         backgroundSize: `${atlas.width}px ${atlas.height}px`,
         imageRendering: "pixelated",
-        borderRadius: "9999px",
       };
-      return <div style={style} className="flex-none shadow-inner" aria-label={enemy.name} />;
+      return <div className="absolute inset-0 rounded-full" style={style} aria-label={enemy.name} />;
     }
   }
   return <EnemySVG boss={enemy.isBoss} />;
 }
 
+function PlayerArt() {
+  const [srcIdx, setSrcIdx] = useState(0);
+  const exts = ["gif", "webp", "png", "jpg", "jpeg"];
+  const candidates = exts.map((ext) => `/sprites/player.${ext}`);
+  const src = candidates[srcIdx] || null;
+
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt="Player"
+        className="absolute inset-0 w-full h-full object-cover rounded-full"
+        style={{ imageRendering: "pixelated" }}
+        onError={() => setSrcIdx((i) => i + 1)}
+      />
+    );
+  }
+  return <PlayerSVG />;
+}
+
+/* Circle wrapper: art is clipped; DPS badge sits outside clip so it isn't cut */
+function AvatarCircle({ children, dps }) {
+  return (
+    <div className="relative w-56 h-56 sm:w-64 sm:h-64">
+      <div className="absolute inset-0 rounded-full overflow-hidden bg-black/40 border border-white/10">
+        {children}
+      </div>
+      <div className="absolute bottom-2 right-2 z-10 w-16 h-16 rounded-full bg-white/95 dark:bg-black/90 border border-slate-300/60 dark:border-white/10 flex flex-col items-center justify-center shadow">
+        <div className="text-[10px] uppercase opacity-70 leading-none">DPS</div>
+        <div className="text-xl font-bold leading-tight">{Math.floor(dps)}</div>
+      </div>
+    </div>
+  );
+}
+
 function PlayerSVG() {
   return (
-    <svg viewBox="0 0 120 140" className="w-28 h-32 flex-none">
+    <svg viewBox="0 0 120 140" className="absolute inset-0 w-full h-full">
       <defs>
         <linearGradient id="pg" x1="0" x2="1">
           <stop offset="0%" stopColor="#64748b" />
@@ -242,7 +272,7 @@ function EnemySVG({ boss }) {
   return boss ? (
     <BossSVG />
   ) : (
-    <svg viewBox="0 0 120 120" className="w-28 h-28 flex-none">
+    <svg viewBox="0 0 120 120" className="absolute inset-0 w-full h-full">
       <defs>
         <radialGradient id="g1" cx="50%" cy="40%" r="60%">
           <stop offset="0%" stopColor="#6b4a8e" stopOpacity="0.8" />
@@ -253,17 +283,13 @@ function EnemySVG({ boss }) {
       <circle cx="45" cy="55" r="6" fill="#fff" />
       <circle cx="75" cy="55" r="6" fill="#fff" />
       <path d="M40,80 Q60,65 80,80" stroke="#b11e2f" strokeWidth="4" fill="none" />
-      <path d="M28 40 L92 40" stroke="rgba(255,255,255,0.1)" strokeWidth="4" />
-      <text x="60" y="110" textAnchor="middle" fontSize="10" fill="#8f5da2">
-        gloomblob
-      </text>
     </svg>
   );
 }
 
 function BossSVG() {
   return (
-    <svg viewBox="0 0 140 140" className="w-32 h-32 flex-none">
+    <svg viewBox="0 0 140 140" className="absolute inset-0 w-full h-full">
       <defs>
         <radialGradient id="g2" cx="50%" cy="50%" r="60%">
           <stop offset="0%" stopColor="#b11e2f" stopOpacity="0.9" />
@@ -274,11 +300,6 @@ function BossSVG() {
       <circle cx="50" cy="60" r="8" fill="#fff" />
       <circle cx="90" cy="60" r="8" fill="#fff" />
       <path d="M45,90 C60,75 80,75 95,90" stroke="#3a1d5d" strokeWidth="5" fill="none" />
-      <path d="M30 35 L110 35" stroke="rgba(255,255,255,0.2)" strokeWidth="5" />
-      <polygon points="65,22 75,22 70,10" fill="#b08d57" />
-      <text x="70" y="120" textAnchor="middle" fontSize="10" fill="#b08d57">
-        middle-management demon
-      </text>
     </svg>
   );
 }
@@ -312,14 +333,14 @@ export default function DarkIdle() {
 
   /* ---------- cloud sync: load-latest-on-login + throttled autosave ---------- */
   const [userId, setUserId] = useState(null);
-  const [syncReady, setSyncReady] = useState(false); // blocks writes until we reconcile
+  const [syncReady, setSyncReady] = useState(false);
   const stateRef = useRef(state);
   const dirtyRef = useRef(false);
 
   useEffect(() => {
-    stateRef.current = state;                 // keep latest snapshot for the saver
+    stateRef.current = state;
     localStorage.setItem("dark-idle-save", JSON.stringify(state));
-    dirtyRef.current = true;                  // mark dirty for next interval push
+    dirtyRef.current = true;
   }, [state]);
 
   const saveToCloud = useCallback(async (uid, snapshot) => {
@@ -348,15 +369,13 @@ export default function DarkIdle() {
       const cloud = data?.[0]?.data ?? null;
 
       if (cloud) {
-        // Always prefer latest cloud on login
         const merged = { ...defaultState, ...cloud };
         merged.items = ensureItems(merged.items);
         merged.version = defaultState.version;
         setState(merged);
         localStorage.setItem("dark-idle-save", JSON.stringify(merged));
-        dirtyRef.current = false; // not dirty immediately after loading cloud
+        dirtyRef.current = false;
       } else {
-        // No cloud row yet → seed from local (or default)
         let local = null;
         try {
           local = JSON.parse(localStorage.getItem("dark-idle-save") || "null");
@@ -370,14 +389,12 @@ export default function DarkIdle() {
       }
     } catch (e) {
       console.warn("Reconciliation failed:", e);
-      // fall back to continuing with local state; autosave will try again
     } finally {
       setSyncReady(true);
     }
   }, [saveToCloud]);
 
   useEffect(() => {
-    // on mount, pick up existing session and subscribe to auth changes
     supabase.auth.getSession().then(({ data }) => {
       const u = data?.session?.user ?? null;
       setUserId(u?.id ?? null);
@@ -392,7 +409,6 @@ export default function DarkIdle() {
     return () => sub.subscription.unsubscribe();
   }, [reconcileFromCloud]);
 
-  // Throttled autosave every 5 seconds when logged in and post-reconciliation
   useEffect(() => {
     if (!userId || !syncReady) return;
     const id = setInterval(() => {
@@ -403,7 +419,6 @@ export default function DarkIdle() {
     return () => clearInterval(id);
   }, [userId, syncReady, saveToCloud]);
 
-  // Also try to flush on page hide (best-effort)
   useEffect(() => {
     const onHide = () => {
       if (userId && syncReady && dirtyRef.current) {
@@ -563,13 +578,13 @@ export default function DarkIdle() {
   const enemyPct = enemy ? Math.max(0, Math.floor((enemy.hp / (enemy.maxHP || 1)) * 100)) : 100;
   const enemyColor =
     enemyPct > 50 ? "from-green-600 to-green-700" : enemyPct > 25 ? "from-amber-500 to-amber-600" : "from-red-600 to-red-700";
-  const [showInfo, setShowInfo] = useState(false); // used for collapsible info
+  const [showInfo, setShowInfo] = useState(false);
 
   /* ---------- render ---------- */
   return (
     <div className="min-h-screen relative text-slate-900 dark:text-gray-100 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-50 via-slate-100 to-slate-200 dark:from-[#0b0c10] dark:via-[#08090c] dark:to-black">
       <div className="max-w-6xl mx-auto p-4 md:p-6 lg:p-8">
-        {/* Header with title + login on the same row */}
+        {/* Header */}
         <header className="flex items-center justify-between gap-3">
           <h1 className="text-2xl md:text-3xl font-black tracking-tight">Dark Idle</h1>
           <div className="shrink-0">
@@ -597,9 +612,9 @@ export default function DarkIdle() {
             <div className="p-4 rounded-2xl bg-white/80 dark:bg-black/60 border border-slate-300/60 dark:border-white/10 shadow-2xl backdrop-blur-sm">
               {enemy && (
                 <div className="mt-3 rounded-xl p-6 bg-white/80 dark:bg-black/60 border border-slate-300/60 dark:border-white/10 overflow-hidden backdrop-blur-sm">
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
-                    {/* Enemy column */}
-                    <div className="text-center">
+                  {/* 1) Titles */}
+                  <div className="grid grid-cols-2 justify-items-center gap-4 sm:gap-8">
+                    <div className="w-full flex flex-col items-center">
                       <div className="text-sm font-semibold uppercase tracking-wide text-gray-300 mb-2">Enemy</div>
                       <div className="text-2xl font-bold mb-4">
                         {enemy.name}
@@ -609,53 +624,47 @@ export default function DarkIdle() {
                           </span>
                         )}
                       </div>
-
-                      <div className="relative mx-auto w-56 h-56 rounded-full flex items-center justify-center bg-black/40 border border-white/10">
-                        {atlas ? <EnemyArt enemy={enemy} atlas={atlas} size={192} /> : <EnemySVG boss={enemy.isBoss} />}
-                        <div className="absolute -bottom-3 -right-3 w-16 h-16 rounded-full bg-white/95 dark:bg-black/90 border border-slate-300/60 dark:border-white/10 flex flex-col items-center justify-center shadow">
-                          <div className="text-[10px] uppercase opacity-70 leading-none">DPS</div>
-                          <div className="text-xl font-bold leading-tight">{Math.floor(enemy.dps)}</div>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 max-w-sm mx-auto">
-                        <div className="h-4 bg-slate-200/60 dark:bg-black/70 rounded-full overflow-hidden shadow-inner">
-                          <div className={`h-full bg-gradient-to-r ${enemyColor}`} style={{ width: `${enemyPct}%` }} />
-                        </div>
-                        <div className="mt-1 text-sm opacity-90">
-                          HP {Math.floor(enemy.hp)} / {enemy.maxHP}
-                        </div>
-                      </div>
                     </div>
-
-                    {/* VS */}
-                    <div className="hidden lg:flex items-center justify-center">
-                      <div className="text-4xl font-black opacity-70 select-none">VS</div>
-                    </div>
-
-                    {/* Player column */}
-                    <div className="text-center">
+                    <div className="w-full flex flex-col items-center">
                       <div className="text-sm font-semibold uppercase tracking-wide text-gray-300 mb-2">You</div>
                       <div className="text-2xl font-bold mb-4">The Protagonist</div>
+                    </div>
+                  </div>
 
-                      <div className="relative mx-auto w-56 h-56 rounded-full flex items-center justify-center bg-black/40 border border-white/10">
-                        <PlayerSVG />
-                        <div className="absolute -bottom-3 -right-3 w-16 h-16 rounded-full bg-white/95 dark:bg-black/90 border border-slate-300/60 dark:border-white/10 flex flex-col items-center justify-center shadow">
-                          <div className="text-[10px] uppercase opacity-70 leading-none">DPS</div>
-                          <div className="text-xl font-bold leading-tight">{Math.floor(stats.dps)}</div>
-                        </div>
+                  {/* 2) Avatars + centred VS (relative only to this row) */}
+                  <div className="relative grid grid-cols-2 items-center justify-items-center gap-4 sm:gap-8">
+                    <AvatarCircle dps={enemy.dps}>
+                      <EnemyArt enemy={enemy} atlas={atlas} />
+                    </AvatarCircle>
+
+                    <AvatarCircle dps={stats.dps}>
+                      <PlayerArt />
+                    </AvatarCircle>
+
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                      <div className="text-3xl sm:text-4xl font-black opacity-70">VS</div>
+                    </div>
+                  </div>
+
+                  {/* 3) Bars & stats */}
+                  <div className="mt-5 grid grid-cols-2 justify-items-center gap-4 sm:gap-8">
+                    <div className="w-full max-w-sm">
+                      <div className="h-4 bg-slate-200/60 dark:bg-black/70 rounded-full overflow-hidden shadow-inner">
+                        <div className={`h-full bg-gradient-to-r ${enemyColor}`} style={{ width: `${enemyPct}%` }} />
                       </div>
-
-                      <div className="mt-5 max-w-sm mx-auto">
-                        <div className="h-4 bg-slate-200/60 dark:bg-black/70 rounded-full overflow-hidden shadow-inner">
-                          <div className={`h-full bg-gradient-to-r ${hpColor}`} style={{ width: `${Math.max(0, Math.min(100, hpPct))}%` }} />
-                        </div>
-                        <div className="mt-1 text-sm opacity-90">
-                          HP {Math.floor(state.hero.hp)} / {stats.maxHP}
-                        </div>
+                      <div className="mt-1 text-sm opacity-90 text-center">
+                        HP {Math.floor(enemy.hp)} / {enemy.maxHP}
                       </div>
+                    </div>
 
-                      <div className="mt-4 text-sm opacity-90 flex items-center justify-center gap-6">
+                    <div className="w-full max-w-sm">
+                      <div className="h-4 bg-slate-200/60 dark:bg-black/70 rounded-full overflow-hidden shadow-inner">
+                        <div className={`h-full bg-gradient-to-r ${hpColor}`} style={{ width: `${Math.max(0, Math.min(100, hpPct))}%` }} />
+                      </div>
+                      <div className="mt-1 text-sm opacity-90 text-center">
+                        HP {Math.floor(state.hero.hp)} / {stats.maxHP}
+                      </div>
+                      <div className="mt-2 text-sm opacity-90 flex items-center justify-center gap-6">
                         <div>APS {stats.aps.toFixed(1)}</div>
                         <div className="h-4 w-px bg-white/20" />
                         <div>DR {stats.dr}</div>
@@ -665,7 +674,7 @@ export default function DarkIdle() {
                     </div>
                   </div>
 
-                  {/* Big bottom buttons */}
+                  {/* Buttons */}
                   <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
                     <button
                       onClick={hit}
@@ -686,7 +695,7 @@ export default function DarkIdle() {
                 </div>
               )}
 
-              {/* --- Loot Log --- */}
+              {/* Loot Log */}
               <div className="mt-4 h-40 overflow-y-auto text-sm space-y-1 pr-2 rounded-lg bg-white/70 dark:bg-black/80 border border-slate-300/60 dark:border-white/10 p-2">
                 {state.log.map((line, i) => (
                   <div key={i} className="text-slate-800 dark:text-gray-100">
@@ -847,7 +856,7 @@ export default function DarkIdle() {
 /* ---------- small UI bits ---------- */
 function Stat({ label, value }) {
   return (
-    <div className="rounded-xl bg-white/80 dark:bg.black/60 border border-slate-300/60 dark:border-white/10 px-3 py-2">
+    <div className="rounded-xl bg-white/80 dark:bg-black/60 border border-slate-300/60 dark:border-white/10 px-3 py-2">
       <div className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-gray-400">{label}</div>
       <div className="text-lg font-bold">{value}</div>
     </div>
