@@ -34,15 +34,6 @@ const bossNames = [
   "The Compliance Hydra",
 ];
 
-const [userId, setUserId] = useState(null);
-
-useEffect(() => {
-  supabase.auth.getSession().then(({ data }) => setUserId(data?.session?.user?.id ?? null));
-  const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
-    setUserId(session?.user?.id ?? null);
-  });
-  return () => sub.subscription.unsubscribe();
-}, []);
 
 const BASE_ITEMS = [
   { id: "dagger", name: "Rusty Shiv of Regret", desc: "+1 DPS per level. Smells like mistakes.", baseCost: { bones: 10 }, costScale: 1.35, max: 100, effect: (lvl) => ({ dpsFlat: lvl * 1 }) },
@@ -388,10 +379,6 @@ useEffect(() => {
   if (!userId) return;              // not signed in → local only
   pushCloudDebounced(userId, state); // signed in → debounce + upsert
 }, [state, userId]);
-
-  useEffect(() => {
-  localStorage.setItem("dark-idle-save", JSON.stringify(state));
-}, [state]);
 
   // enemy spawn
   useEffect(() => {
