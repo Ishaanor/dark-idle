@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Auth from "./Auth";
 import { supabase } from "./supabaseClient";
 
@@ -33,7 +33,6 @@ const bossNames = [
   "Siren of Scope Creep",
   "The Compliance Hydra",
 ];
-
 
 const BASE_ITEMS = [
   { id: "dagger", name: "Rusty Shiv of Regret", desc: "+1 DPS per level. Smells like mistakes.", baseCost: { bones: 10 }, costScale: 1.35, max: 100, effect: (lvl) => ({ dpsFlat: lvl * 1 }) },
@@ -291,6 +290,7 @@ export default function DarkIdle() {
     return BASE_ITEMS.map((b) => map[b.id] || { id: b.id, level: 0 });
   };
 
+  // state initialisation (from local)
   const [state, setState] = useState(() => {
     const raw = localStorage.getItem("dark-idle-save");
     if (raw) {
@@ -310,77 +310,116 @@ export default function DarkIdle() {
   const stats = useMemo(() => calcStats(state), [state]);
   const atlas = useAtlas("/spritesheet_default.xml");
 
-  // cloud sync (supabase save/load) – kept from your current App.jsx
+  /* ---------- cloud sync: load-latest-on-login + throttled autosave ---------- */
+  const [userId, setUserId] = useState(null);
+  const [syncReady, setSyncReady] = useState(false); // blocks writes until we reconcile
+  const stateRef = useRef(state);
+  const dirtyRef = useRef(false);
+
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, session) => {
-      if (!session?.user) return;
+    stateRef.current = state;                 // keep latest snapshot for the saver
+    localStorage.setItem("dark-idle-save", JSON.stringify(state));
+    dirtyRef.current = true;                  // mark dirty for next interval push
+  }, [state]);
+
+  const saveToCloud = useCallback(async (uid, snapshot) => {
+    const payload = { ...snapshot, _updatedAt: new Date().toISOString() };
+    const { error } = await supabase
+      .from("dark_idle_saves")
+      .upsert(
+        { user_id: uid, data: payload, version: payload.version ?? defaultState.version },
+        { onConflict: "user_id" }
+      );
+    if (error) console.error("saveToCloud error", error);
+  }, []);
+
+  const reconcileFromCloud = useCallback(async (uid) => {
+    setSyncReady(false);
+    try {
       const { data, error } = await supabase
         .from("dark_idle_saves")
-        .select("data, updated_at, version")
-        .eq("user_id", session.user.id)
-        .single();
+        .select("data, updated_at")
+        .eq("user_id", uid)
+        .order("updated_at", { ascending: false })
+        .limit(1);
 
-      if (!error && data?.data) {
-        const localRaw = localStorage.getItem("dark-idle-save");
-        const local = localRaw ? JSON.parse(localRaw) : null;
-        const cloud = data.data;
-        const keepCloud = !local || new Date(data.updated_at) > new Date(local._updatedAt || 0);
-        setState((s) => {
-          const base = keepCloud ? cloud : { ...s };
-          return { ...defaultState, ...base, items: ensureItems(base.items) };
-        });
+      if (error) throw error;
+
+      const cloud = data?.[0]?.data ?? null;
+
+      if (cloud) {
+        // Always prefer latest cloud on login
+        const merged = { ...defaultState, ...cloud };
+        merged.items = ensureItems(merged.items);
+        merged.version = defaultState.version;
+        setState(merged);
+        localStorage.setItem("dark-idle-save", JSON.stringify(merged));
+        dirtyRef.current = false; // not dirty immediately after loading cloud
       } else {
-        await saveToCloud(session.user.id, state);
+        // No cloud row yet → seed from local (or default)
+        let local = null;
+        try {
+          local = JSON.parse(localStorage.getItem("dark-idle-save") || "null");
+        } catch {}
+        const seed = local
+          ? { ...defaultState, ...local, items: ensureItems(local.items) }
+          : { ...defaultState, items: ensureItems(defaultState.items) };
+        await saveToCloud(uid, seed);
+        setState(seed);
+        dirtyRef.current = false;
       }
+    } catch (e) {
+      console.warn("Reconciliation failed:", e);
+      // fall back to continuing with local state; autosave will try again
+    } finally {
+      setSyncReady(true);
+    }
+  }, [saveToCloud]);
+
+  useEffect(() => {
+    // on mount, pick up existing session and subscribe to auth changes
+    supabase.auth.getSession().then(({ data }) => {
+      const u = data?.session?.user ?? null;
+      setUserId(u?.id ?? null);
+      if (u) reconcileFromCloud(u.id);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+      const u = session?.user ?? null;
+      setUserId(u?.id ?? null);
+      if (u) reconcileFromCloud(u.id);
+      else setSyncReady(false);
     });
     return () => sub.subscription.unsubscribe();
-  }, []); // eslint-disable-line
+  }, [reconcileFromCloud]);
 
-const saveToCloud = async (userId, snapshot) => {
-  const payload = { ...snapshot, _updatedAt: new Date().toISOString() };
-  const { error } = await supabase
-    .from("dark_idle_saves")
-    .upsert(
-      {
-        user_id: userId,
-        data: payload,
-        version: payload.version ?? defaultState.version,
-      },
-      { onConflict: "user_id" } // <-- important when the unique constraint exists
-    );
-  if (error) {
-    console.error("saveToCloud error", error);
-  }
-};
+  // Throttled autosave every 5 seconds when logged in and post-reconciliation
+  useEffect(() => {
+    if (!userId || !syncReady) return;
+    const id = setInterval(() => {
+      if (!dirtyRef.current) return;
+      dirtyRef.current = false;
+      saveToCloud(userId, stateRef.current);
+    }, 5000);
+    return () => clearInterval(id);
+  }, [userId, syncReady, saveToCloud]);
 
-
-  function debounce(fn, ms) {
-    let t;
-    return (...a) => {
-      clearTimeout(t);
-      t = setTimeout(() => fn(...a), ms);
+  // Also try to flush on page hide (best-effort)
+  useEffect(() => {
+    const onHide = () => {
+      if (userId && syncReady && dirtyRef.current) {
+        dirtyRef.current = false;
+        saveToCloud(userId, stateRef.current);
+      }
     };
-  }
-  const pushCloudDebounced = useMemo(() => debounce(saveToCloud, 1500), []);
-  
-  const [userId, setUserId] = useState(null);
-useEffect(() => {
-  supabase.auth.getSession().then(({ data }) => {
-    setUserId(data?.session?.user?.id ?? null);
-  });
-  const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
-    setUserId(session?.user?.id ?? null);
-  });
-  return () => sub.subscription.unsubscribe();
-}, []);
+    window.addEventListener("visibilitychange", onHide);
+    window.addEventListener("beforeunload", onHide);
+    return () => {
+      window.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("beforeunload", onHide);
+    };
+  }, [userId, syncReady, saveToCloud]);
 
-useEffect(() => {
-  localStorage.setItem("dark-idle-save", JSON.stringify(state));
-  if (!userId) return;              // not signed in → local only
-  pushCloudDebounced(userId, state); // signed in → debounce + upsert
-}, [state, userId]);
-
-  // enemy spawn
+  /* ---------- enemy spawn ---------- */
   useEffect(() => {
     if (!state.enemy) {
       const isBoss = state.killsThisStage > 0 && state.killsThisStage % 10 === 0;
@@ -388,7 +427,7 @@ useEffect(() => {
     }
   }, [state.enemy, state.killsThisStage, state.stage]);
 
-  // input
+  /* ---------- input ---------- */
   const hit = useCallback(() => {
     setState((s) => {
       const st = calcStats(s);
@@ -425,7 +464,7 @@ useEffect(() => {
     return () => window.removeEventListener("keydown", onKey);
   }, [hit, heal]);
 
-  // main tick
+  /* ---------- main tick ---------- */
   useEffect(() => {
     const tick = setInterval(() => {
       setState((s) => {
@@ -533,7 +572,6 @@ useEffect(() => {
         {/* Header with title + login on the same row */}
         <header className="flex items-center justify-between gap-3">
           <h1 className="text-2xl md:text-3xl font-black tracking-tight">Dark Idle</h1>
-          {/* Login moved here to top-right, inline with title */}
           <div className="shrink-0">
             <Auth />
           </div>
@@ -648,7 +686,7 @@ useEffect(() => {
                 </div>
               )}
 
-              {/* --- Loot Log (re-added) --- */}
+              {/* --- Loot Log --- */}
               <div className="mt-4 h-40 overflow-y-auto text-sm space-y-1 pr-2 rounded-lg bg-white/70 dark:bg-black/80 border border-slate-300/60 dark:border-white/10 p-2">
                 {state.log.map((line, i) => (
                   <div key={i} className="text-slate-800 dark:text-gray-100">
@@ -731,11 +769,11 @@ useEffect(() => {
               >
                 Reset
               </button>
-              <span className="text-xs text-slate-500 dark:text-gray-400">Auto-saves every tick</span>
+              <span className="text-xs text-slate-500 dark:text-gray-400">Auto-saves every few seconds</span>
             </div>
           </section>
 
-          {/* Collapsible info (drop rates & death penalties) — restored */}
+          {/* Collapsible info */}
           <section className="mt-6">
             <button
               onClick={() => setShowInfo((v) => !v)}
@@ -809,7 +847,7 @@ useEffect(() => {
 /* ---------- small UI bits ---------- */
 function Stat({ label, value }) {
   return (
-    <div className="rounded-xl bg-white/80 dark:bg-black/60 border border-slate-300/60 dark:border-white/10 px-3 py-2">
+    <div className="rounded-xl bg-white/80 dark:bg.black/60 border border-slate-300/60 dark:border-white/10 px-3 py-2">
       <div className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-gray-400">{label}</div>
       <div className="text-lg font-bold">{value}</div>
     </div>
