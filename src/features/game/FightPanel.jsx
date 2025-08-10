@@ -1,8 +1,7 @@
-import EnemyArt, { PlayerArt } from "./EnemyArt.jsx";
-import AvatarCircle from "./AvatarCircle.jsx";
-import { clamp } from "../game/logic.js";
+import EnemyArt from "./EnemyArt.jsx";
+import PlayerArt from "./PlayerArt.jsx";
 
-export default function FightPanel({ state, stats, atlas, onHit, onHeal }) {
+export default function FightPanel({ state, stats, atlas, onHit, onHeal, attacking }) {
   const enemy = state.enemy;
   if (!enemy) return null;
 
@@ -37,13 +36,25 @@ export default function FightPanel({ state, stats, atlas, onHit, onHeal }) {
 
       {/* Avatars + centred VS (side-by-side even on mobile) */}
       <div className="relative mt-3 grid grid-cols-2 items-center justify-items-center gap-3 sm:gap-8">
-        <AvatarCircle dps={enemy.dps}>
-          <EnemyArt enemy={enemy} atlas={atlas} />
-        </AvatarCircle>
+        <div className="relative w-36 h-36 xs:w-44 xs:h-44 sm:w-56 sm:h-56 md:w-64 md:h-64">
+          <div className="absolute inset-0 rounded-full overflow-hidden bg-black/40 border border-white/10">
+            <EnemyArt enemy={enemy} atlas={atlas} />
+          </div>
+          <div className="absolute bottom-1 right-1 sm:bottom-2 sm:right-2 z-10 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/95 dark:bg-black/90 border border-slate-300/60 dark:border-white/10 flex flex-col items-center justify-center shadow">
+            <div className="text-[9px] sm:text-[10px] uppercase opacity-70 leading-none">DPS</div>
+            <div className="text-base sm:text-xl font-bold leading-tight">{Math.floor(enemy.dps)}</div>
+          </div>
+        </div>
 
-        <AvatarCircle dps={stats.dps}>
-          <PlayerArt />
-        </AvatarCircle>
+        <div className="relative w-36 h-36 xs:w-44 xs:h-44 sm:w-56 sm:h-56 md:w-64 md:h-64">
+          <div className="absolute inset-0 rounded-full overflow-hidden bg-black/40 border border-white/10">
+            <PlayerArt attacking={attacking} />
+          </div>
+          <div className="absolute bottom-1 right-1 sm:bottom-2 sm:right-2 z-10 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/95 dark:bg-black/90 border border-slate-300/60 dark:border-white/10 flex flex-col items-center justify-center shadow">
+            <div className="text-[9px] sm:text-[10px] uppercase opacity-70 leading-none">DPS</div>
+            <div className="text-base sm:text-xl font-bold leading-tight">{Math.floor(stats.dps)}</div>
+          </div>
+        </div>
 
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div className="text-2xl sm:text-4xl font-black opacity-70">VS</div>

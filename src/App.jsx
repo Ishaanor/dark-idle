@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import Auth from "./Auth";
 
 // Game data/logic
@@ -54,13 +54,16 @@ export default function DarkIdle() {
   const atlas = useAtlas("/spritesheet_default.xml");
 
   /* ---------- cloud sync (hook) ---------- */
-  const { userId, syncReady, lastSyncAt, upsertNow } = useCloudSync({
+  const { lastSyncAt } = useCloudSync({
     state,
     setState,
     defaultState,
     ensureItems,
   });
-  // (userId/syncReady/upsertNow are available if you want UI for them later)
+
+  /* ---------- transient attack animation flag ---------- */
+  const [attacking, setAttacking] = useState(false);
+  const attackTimerRef = useRef(null);
 
   /* ---------- actions (clicks) ---------- */
   const hit = useCallback(() => {
@@ -70,6 +73,11 @@ export default function DarkIdle() {
       const clickDmg = Math.max(1, Math.floor(st.dps * 0.5));
       return { ...s, enemy: { ...s.enemy, hp: Math.max(0, s.enemy.hp - clickDmg) } };
     });
+
+    // flip on briefly; holding Space keeps it true
+    clearTimeout(attackTimerRef.current);
+    setAttacking(true);
+    attackTimerRef.current = setTimeout(() => setAttacking(false), 140);
   }, []);
 
   const heal = useCallback(() => {
@@ -104,17 +112,15 @@ export default function DarkIdle() {
 
   /* ---------- render ---------- */
   return (
-   <div
-  className="min-h-screen relative text-slate-900 dark:text-gray-100 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-50 via-slate-100 to-slate-200 dark:from-[#0b0c10] dark:via-[#08090c] dark:to-black"
-  style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)" }}
->
-
+    <div
+      className="min-h-screen relative text-slate-900 dark:text-gray-100 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-50 via-slate-100 to-slate-200 dark:from-[#0b0c10] dark:via-[#08090c] dark:to-black"
+      style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)" }}
+    >
       <div className="max-w-6xl mx-auto p-4 md:p-6 lg:p-8">
         {/* Header */}
         <header className="flex items-center justify-between gap-3">
           <h1 className="text-2xl md:text-3xl font-black tracking-tight">Dark Idle</h1>
           <div className="shrink-0">
-            {/* Pass lastSyncAt so Auth can show “Last sync …” */}
             <Auth lastSyncAt={lastSyncAt} />
           </div>
         </header>
@@ -137,7 +143,14 @@ export default function DarkIdle() {
           {/* Fight panel card */}
           <section>
             <div className="p-4 rounded-2xl bg-white/80 dark:bg-black/60 border border-slate-300/60 dark:border-white/10 shadow-2xl backdrop-blur-sm">
-              <FightPanel state={state} stats={stats} atlas={atlas} onHit={hit} onHeal={heal} />
+              <FightPanel
+                state={state}
+                stats={stats}
+                atlas={atlas}
+                onHit={hit}
+                onHeal={heal}
+                attacking={attacking}
+              />
               <LootLog log={state.log} />
             </div>
           </section>
