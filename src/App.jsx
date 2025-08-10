@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import Auth from './Auth';
+import { supabase } from './supabaseClient';
 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 const fmt = (n) => {
@@ -254,6 +256,59 @@ export default function DarkIdle() {
   const atlas = useAtlas("/spritesheet_default.xml");
 
   useEffect(() => {
+  const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, session) => {
+    if (!session?.user) return;
+    const { data, error } = await supabase
+      .from('dark_idle_saves')
+      .select('data, updated_at, version')
+      .eq('user_id', session.user.id)
+      .single();
+
+    if (!error && data?.data) {
+      // Decide which to keep: cloud vs local
+      const localRaw = localStorage.getItem('dark-idle-save');
+      const local = localRaw ? JSON.parse(localRaw) : null;
+      const cloud = data.data;
+
+      const keepCloud =
+        !local || new Date(data.updated_at) > new Date(local._updatedAt || 0);
+
+      setState((s) => {
+        const base = keepCloud ? cloud : { ...s };
+        // ensure shape (items list etc.)
+        return { ...defaultState, ...base, items: ensureItems(base.items) };
+      });
+    } else {
+      // No cloud save yet: push local to cloud
+      await saveToCloud(session.user.id, state);
+    }
+  });
+  return () => sub.subscription.unsubscribe();
+}, []);
+
+const saveToCloud = async (userId, snapshot) => {
+  const payload = { ...snapshot, _updatedAt: new Date().toISOString() };
+  await supabase.from('dark_idle_saves').upsert({
+    user_id: userId,
+    data: payload,
+    version: payload.version ?? defaultState.version,
+  });
+};
+
+// Debounce helper
+function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
+const pushCloudDebounced = useMemo(() => debounce(saveToCloud, 1500), []);
+
+useEffect(() => {
+  // existing localStorage save is here already :contentReference[oaicite:1]{index=1}
+  localStorage.setItem('dark-idle-save', JSON.stringify(state));
+  const u = supabase.auth.getUser().then(({ data }) => {
+    const user = data?.user;
+    if (user) pushCloudDebounced(user.id, state);
+  });
+}, [state]);
+
+  useEffect(() => {
     if (!state.enemy) {
       const isBoss = state.killsThisStage > 0 && state.killsThisStage % 10 === 0;
       setState((s) => ({ ...s, enemy: scaleEnemy(s.stage, isBoss) }));
@@ -406,6 +461,7 @@ export default function DarkIdle() {
         </div>
 
         <main className="mt-6 w-full">
+          <Auth />
           <section>
             <div className="p-4 rounded-2xl bg-white/80 dark:bg-black/60 border border-slate-300/60 dark:border-white/10 shadow-2xl backdrop-blur-sm">
               {enemy && (
