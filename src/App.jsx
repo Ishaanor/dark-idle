@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import Auth from "./Auth";
 
 
@@ -66,6 +66,72 @@ export default function DarkIdle() {
   const [attacking, setAttacking] = useState(false);
   const attackTimerRef = useRef(null);
 
+  /* ---------- username for leaderboard ---------- */
+  const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [pendingUsername, setPendingUsername] = useState(state.settings?.username || "");
+  const hasPromptedUsernameRef = useRef(false);
+
+  // Open username prompt on first successful cloud sync (roughly: post-login) if not set yet
+  useEffect(() => {
+    if (!state.settings?.username && lastSyncAt && !hasPromptedUsernameRef.current) {
+      setPendingUsername("");
+      setShowUsernameModal(true);
+      hasPromptedUsernameRef.current = true;
+    }
+  }, [lastSyncAt, state.settings?.username]);
+
+  // Persist username to Supabase on cloud sync (no-op if client not present)
+  useEffect(() => {
+    // only attempt after a sync tick and when we actually have a username
+    if (!lastSyncAt || !state.settings?.username) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        // Try to dynamically import the Supabase client from the expected location
+        const path = "./features/sync/supabaseClient.js";
+        const mod = await import(/* @vite-ignore */ path).catch(() => null);
+        if (!mod) return; // client not available -> skip silently
+        const supabase = mod.supabase || mod.default || mod.client;
+        if (!supabase) return;
+
+        const { data, error: userErr } = await supabase.auth.getUser();
+        if (userErr || !data?.user) return;
+
+        const { error } = await supabase
+          .from("profiles")
+          .upsert({
+            id: data.user.id,
+            username: state.settings.username,
+            updated_at: new Date().toISOString(),
+          });
+        if (error) {
+          // Soft-fail; don't interrupt gameplay
+          // console.warn("Profile upsert failed", error);
+        }
+      } catch (e) {
+        // ignore; keeps the game running even if Supabase isn’t configured locally
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [lastSyncAt, state.settings?.username]);
+
+  const saveUsername = useCallback(() => {
+    const raw = (pendingUsername || "").trim();
+    const ok = /^[A-Za-z0-9_]{3,20}$/.test(raw);
+    if (!ok) {
+      alert("Usernames must be 3–20 characters and use letters, numbers, or underscores only.");
+      return;
+    }
+    setState((s) => ({
+      ...s,
+      settings: { ...s.settings, username: raw },
+      log: [`Set username to "${raw}".`, ...(s.log || [])].slice(0, 50),
+    }));
+    setShowUsernameModal(false);
+  }, [pendingUsername, setState]);
+
   /* ---------- actions (clicks) ---------- */
   const hit = useCallback(() => {
     setState((s) => {
@@ -121,8 +187,18 @@ export default function DarkIdle() {
         {/* Header */}
         <header className="flex items-center justify-between gap-3">
           <h1 className="text-2xl md:text-3xl font-black tracking-tight">Dark Idle</h1>
-          <div className="shrink-0">
-            <Auth lastSyncAt={lastSyncAt} />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowUsernameModal(true)}
+              className="shrink-0 text-sm px-3 py-1.5 rounded-full bg-white/80 dark:bg-black/60 border border-slate-300/60 dark:border-white/10 hover:bg-white/90 dark:hover:bg-black/70"
+              aria-label={state.settings?.username ? `Edit username (${state.settings.username})` : "Set username"}
+              title={state.settings?.username ? `@${state.settings.username}` : "Set username"}
+            >
+              {state.settings?.username ? `@${state.settings.username}` : "Set username"}
+            </button>
+            <div className="shrink-0">
+              <Auth lastSyncAt={lastSyncAt} />
+            </div>
           </div>
         </header>
 
@@ -141,9 +217,56 @@ export default function DarkIdle() {
         </div>
 
         <main className="mt-6 w-full">
+          {showUsernameModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+              <div className="w-full max-w-sm rounded-2xl p-4 md:p-6 bg-white dark:bg-black border border-slate-300/60 dark:border-white/10 shadow-2xl">
+                <h2 className="text-lg font-semibold mb-2">Choose a username</h2>
+                <p className="text-sm text-slate-600 dark:text-gray-300 mb-3">
+                  This will appear on leaderboards. Emails are never shown.
+                </p>
+                <input
+                  value={pendingUsername}
+                  onChange={(e) => setPendingUsername(e.target.value)}
+                  placeholder="e.g. gloomslayer_99"
+                  className="w-full px-3 py-2 rounded-lg bg-white/80 dark:bg-black/60 border border-slate-300/60 dark:border-white/10 outline-none"
+                />
+                <p className="mt-2 text-xs text-slate-500 dark:text-gray-400">
+                  Allowed: 3–20 characters; letters, numbers, and underscores only.
+                </p>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    onClick={() => setShowUsernameModal(false)}
+                    className="text-sm px-3 py-2 rounded-lg bg-white/70 dark:bg-black/40 border border-slate-300/60 dark:border-white/10"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveUsername}
+                    className="text-sm px-3 py-2 rounded-lg text-white bg-gradient-to-r from-[#3a1d5d] to-[#6b0f1a] border border-white/10"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           {/* Fight panel card */}
           <section>
             <div className="p-4 rounded-2xl bg-white/80 dark:bg-black/60 border border-slate-300/60 dark:border-white/10 shadow-2xl backdrop-blur-sm">
+              <div className="mb-3 flex items-center justify-between text-xs text-slate-700 dark:text-gray-300">
+                <div className="flex items-center gap-2">
+                  <span className="uppercase tracking-wider">Player</span>
+                  <span className="px-2 py-1 rounded-full bg-white/70 dark:bg-black/40 border border-slate-300/60 dark:border-white/10">
+                    {state.settings?.username ? `@${state.settings.username}` : "Set username"}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setShowUsernameModal(true)}
+                  className="px-2 py-1 rounded-lg bg-white/70 dark:bg-black/40 border border-slate-300/60 dark:border-white/10 hover:bg-white/80 dark:hover:bg-black/50"
+                >
+                  Edit
+                </button>
+              </div>
               <FightPanel
                 state={state}
                 stats={stats}
@@ -240,6 +363,8 @@ export default function DarkIdle() {
           <span>Strike</span>
           <span className="px-2 py-1 rounded bg-white/70 dark:bg-black/40 border border-slate-300/60 dark:border-white/10">Shift</span>
           <span>Bandage (-{state.settings.healCostSouls} souls)</span>
+          <span className="hidden sm:inline">•</span>
+          <span>Tap your @name in the header to change username</span>
         </div>
 
         <footer className="mt-6 text-xs text-slate-500 dark:text-gray-400">
