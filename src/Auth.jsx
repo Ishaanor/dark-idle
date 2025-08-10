@@ -32,24 +32,27 @@ export default function Auth() {
   };
 
   const loadLastSync = async (uid) => {
-    try {
-      const { data, error } = await supabase
-        .from("dark_idle_saves")
-        .select("updated_at")
-        .eq("user_id", uid)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from("dark_idle_saves")
+      .select("updated_at")
+      .eq("user_id", uid)
+      .order("updated_at", { ascending: false })
+      .limit(1); // resilient even if duplicates exist
 
-      if (!error && data?.updated_at) {
-        setLastSyncAt(data.updated_at);
-      } else {
-        setLastSyncAt(null);
-      }
-    } catch {
-      setLastSyncAt(null);
+    if (error) {
+      console.warn("loadLastSync error:", error);
+      return; // keep previous lastSyncAt
     }
-  };
+    if (Array.isArray(data) && data.length && data[0]?.updated_at) {
+      setLastSyncAt(data[0].updated_at);
+    }
+    // if zero rows, do nothing (keep previous value)
+  } catch (e) {
+    console.warn("loadLastSync exception:", e);
+    // keep previous value
+  }
+};
 
   // Session + auth change handling (unchanged behaviour)
   useEffect(() => {
