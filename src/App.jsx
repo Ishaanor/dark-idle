@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import Auth from './Auth';
-import { supabase } from './supabaseClient';
+import Auth from "./Auth";
+import { supabase } from "./supabaseClient";
 
+/* ---------- utils ---------- */
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 const fmt = (n) => {
   if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
@@ -11,6 +12,7 @@ const fmt = (n) => {
 };
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
+/* ---------- data ---------- */
 const enemyNames = [
   "Gloomrat",
   "Taxidermied Goblin",
@@ -56,6 +58,7 @@ const defaultState = {
   settings: { healCostSouls: 10 },
 };
 
+/* ---------- helpers ---------- */
 function rollName(list) {
   return list[Math.floor(Math.random() * list.length)];
 }
@@ -65,7 +68,6 @@ function scaleEnemy(stage, isBoss) {
   const dps = Math.max(1, Math.floor(stage * 0.7 + (isBoss ? 2 : 0)));
   return { name: isBoss ? rollName(bossNames) : rollName(enemyNames), maxHP: hp, hp, dps, isBoss };
 }
-
 function calcStats(state) {
   const itemsById = Object.fromEntries(BASE_ITEMS.map((i) => [i.id, i]));
   let dpsFlat = 0,
@@ -96,7 +98,6 @@ function calcStats(state) {
   const aps = Math.min(5, 1 + apsFlat);
   return { maxHP, dps, lootMult, soulsPerSec, dr, aps };
 }
-
 function costFor(itemId, level) {
   const base = BASE_ITEMS.find((i) => i.id === itemId);
   if (!base) return {};
@@ -117,6 +118,7 @@ function addLog(state, msg) {
   return { ...state, log: [msg, ...state.log].slice(0, 50) };
 }
 
+/* ---------- sprite atlas ---------- */
 function useAtlas(xmlPath) {
   const [atlas, setAtlas] = useState(null);
   useEffect(() => {
@@ -218,25 +220,76 @@ function EnemyArt({ enemy, atlas, size = 112 }) {
   return <EnemySVG boss={enemy.isBoss} />;
 }
 
-function PlayerArt({ size = 168 }) {
+function PlayerSVG() {
   return (
-    <img
-      src="/sprites/player.gif"
-      alt="Player"
-      width={size}
-      height={size}
-      className="w-28 h-28 flex-none object-contain rounded-full shadow-inner"
-      style={{ imageRendering: "pixelated" }}
-    />
+    <svg viewBox="0 0 120 140" className="w-28 h-32 flex-none">
+      <defs>
+        <linearGradient id="pg" x1="0" x2="1">
+          <stop offset="0%" stopColor="#64748b" />
+          <stop offset="100%" stopColor="#94a3b8" />
+        </linearGradient>
+      </defs>
+      <circle cx="60" cy="45" r="28" fill="#cbd5e1" stroke="#94a3b8" strokeWidth="3" />
+      <rect x="28" y="78" width="64" height="44" rx="10" fill="url(#pg)" stroke="#475569" strokeWidth="3" />
+      <circle cx="48" cy="42" r="5" fill="#0f172a" />
+      <circle cx="72" cy="42" r="5" fill="#0f172a" />
+      <path d="M45,58 Q60,52 75,58" stroke="#0f172a" strokeWidth="4" fill="none" />
+    </svg>
   );
 }
 
+function EnemySVG({ boss }) {
+  return boss ? (
+    <BossSVG />
+  ) : (
+    <svg viewBox="0 0 120 120" className="w-28 h-28 flex-none">
+      <defs>
+        <radialGradient id="g1" cx="50%" cy="40%" r="60%">
+          <stop offset="0%" stopColor="#6b4a8e" stopOpacity="0.8" />
+          <stop offset="100%" stopColor="#221436" stopOpacity="0.1" />
+        </radialGradient>
+      </defs>
+      <circle cx="60" cy="60" r="48" fill="url(#g1)" stroke="#5b2a86" strokeOpacity="0.5" strokeWidth="2" />
+      <circle cx="45" cy="55" r="6" fill="#fff" />
+      <circle cx="75" cy="55" r="6" fill="#fff" />
+      <path d="M40,80 Q60,65 80,80" stroke="#b11e2f" strokeWidth="4" fill="none" />
+      <path d="M28 40 L92 40" stroke="rgba(255,255,255,0.1)" strokeWidth="4" />
+      <text x="60" y="110" textAnchor="middle" fontSize="10" fill="#8f5da2">
+        gloomblob
+      </text>
+    </svg>
+  );
+}
 
+function BossSVG() {
+  return (
+    <svg viewBox="0 0 140 140" className="w-32 h-32 flex-none">
+      <defs>
+        <radialGradient id="g2" cx="50%" cy="50%" r="60%">
+          <stop offset="0%" stopColor="#b11e2f" stopOpacity="0.9" />
+          <stop offset="100%" stopColor="#3a1d5d" stopOpacity="0.2" />
+        </radialGradient>
+      </defs>
+      <rect x="10" y="25" width="120" height="90" rx="18" fill="url(#g2)" stroke="#b11e2f" strokeOpacity="0.6" strokeWidth="2" />
+      <circle cx="50" cy="60" r="8" fill="#fff" />
+      <circle cx="90" cy="60" r="8" fill="#fff" />
+      <path d="M45,90 C60,75 80,75 95,90" stroke="#3a1d5d" strokeWidth="5" fill="none" />
+      <path d="M30 35 L110 35" stroke="rgba(255,255,255,0.2)" strokeWidth="5" />
+      <polygon points="65,22 75,22 70,10" fill="#b08d57" />
+      <text x="70" y="120" textAnchor="middle" fontSize="10" fill="#b08d57">
+        middle-management demon
+      </text>
+    </svg>
+  );
+}
+
+/* ---------- main component ---------- */
 export default function DarkIdle() {
   const ensureItems = (items) => {
     const map = Object.fromEntries((items || []).map((i) => [i.id, i]));
     return BASE_ITEMS.map((b) => map[b.id] || { id: b.id, level: 0 });
   };
+
   const [state, setState] = useState(() => {
     const raw = localStorage.getItem("dark-idle-save");
     if (raw) {
@@ -252,72 +305,71 @@ export default function DarkIdle() {
     fresh.items = ensureItems(fresh.items);
     return fresh;
   });
+
   const stats = useMemo(() => calcStats(state), [state]);
   const atlas = useAtlas("/spritesheet_default.xml");
 
+  // cloud sync (supabase save/load) – kept from your current App.jsx
   useEffect(() => {
-  const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, session) => {
-    if (!session?.user) return;
-    const { data, error } = await supabase
-      .from('dark_idle_saves')
-      .select('data, updated_at, version')
-      .eq('user_id', session.user.id)
-      .single();
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, session) => {
+      if (!session?.user) return;
+      const { data, error } = await supabase
+        .from("dark_idle_saves")
+        .select("data, updated_at, version")
+        .eq("user_id", session.user.id)
+        .single();
 
-    if (!error && data?.data) {
-      // Decide which to keep: cloud vs local
-      const localRaw = localStorage.getItem('dark-idle-save');
-      const local = localRaw ? JSON.parse(localRaw) : null;
-      const cloud = data.data;
+      if (!error && data?.data) {
+        const localRaw = localStorage.getItem("dark-idle-save");
+        const local = localRaw ? JSON.parse(localRaw) : null;
+        const cloud = data.data;
+        const keepCloud = !local || new Date(data.updated_at) > new Date(local._updatedAt || 0);
+        setState((s) => {
+          const base = keepCloud ? cloud : { ...s };
+          return { ...defaultState, ...base, items: ensureItems(base.items) };
+        });
+      } else {
+        await saveToCloud(session.user.id, state);
+      }
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []); // eslint-disable-line
 
-      const keepCloud =
-        !local || new Date(data.updated_at) > new Date(local._updatedAt || 0);
+  const saveToCloud = async (userId, snapshot) => {
+    const payload = { ...snapshot, _updatedAt: new Date().toISOString() };
+    await supabase.from("dark_idle_saves").upsert({
+      user_id: userId,
+      data: payload,
+      version: payload.version ?? defaultState.version,
+    });
+  };
 
-      setState((s) => {
-        const base = keepCloud ? cloud : { ...s };
-        // ensure shape (items list etc.)
-        return { ...defaultState, ...base, items: ensureItems(base.items) };
-      });
-    } else {
-      // No cloud save yet: push local to cloud
-      await saveToCloud(session.user.id, state);
-    }
-  });
-  return () => sub.subscription.unsubscribe();
-}, []);
+  function debounce(fn, ms) {
+    let t;
+    return (...a) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...a), ms);
+    };
+  }
+  const pushCloudDebounced = useMemo(() => debounce(saveToCloud, 1500), []);
 
-const saveToCloud = async (userId, snapshot) => {
-  const payload = { ...snapshot, _updatedAt: new Date().toISOString() };
-  await supabase.from('dark_idle_saves').upsert({
-    user_id: userId,
-    data: payload,
-    version: payload.version ?? defaultState.version,
-  });
-};
+  useEffect(() => {
+    localStorage.setItem("dark-idle-save", JSON.stringify(state));
+    supabase.auth.getUser().then(({ data }) => {
+      const user = data?.user;
+      if (user) pushCloudDebounced(user.id, state);
+    });
+  }, [state]); // eslint-disable-line
 
-// Debounce helper
-function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
-const pushCloudDebounced = useMemo(() => debounce(saveToCloud, 1500), []);
-
-useEffect(() => {
-  // existing localStorage save is here already :contentReference[oaicite:1]{index=1}
-  localStorage.setItem('dark-idle-save', JSON.stringify(state));
-  const u = supabase.auth.getUser().then(({ data }) => {
-    const user = data?.user;
-    if (user) pushCloudDebounced(user.id, state);
-  });
-}, [state]);
-
+  // enemy spawn
   useEffect(() => {
     if (!state.enemy) {
       const isBoss = state.killsThisStage > 0 && state.killsThisStage % 10 === 0;
       setState((s) => ({ ...s, enemy: scaleEnemy(s.stage, isBoss) }));
     }
   }, [state.enemy, state.killsThisStage, state.stage]);
-  useEffect(() => {
-    localStorage.setItem("dark-idle-save", JSON.stringify(state));
-  }, [state]);
 
+  // input
   const hit = useCallback(() => {
     setState((s) => {
       const st = calcStats(s);
@@ -339,7 +391,6 @@ useEffect(() => {
       };
     });
   }, []);
-
   useEffect(() => {
     const onKey = (e) => {
       if (e.code === "Space") {
@@ -355,19 +406,28 @@ useEffect(() => {
     return () => window.removeEventListener("keydown", onKey);
   }, [hit, heal]);
 
+  // main tick
   useEffect(() => {
     const tick = setInterval(() => {
       setState((s) => {
         let next = { ...s };
         const st = calcStats(next);
+
+        // passive souls
         next.resources = { ...next.resources, souls: (next.resources.souls || 0) + st.soulsPerSec };
+
         if (next.enemy) {
+          // you hit enemy
           const dmg = Math.max(0, Math.floor(st.dps * st.aps));
           next.enemy = { ...next.enemy, hp: Math.max(0, next.enemy.hp - dmg) };
+
+          // enemy hits you
           const enemyDmg = next.enemy.dps;
           const damageTaken = Math.max(0, Math.floor(enemyDmg - st.dr));
           const newHP = clamp(Math.floor((next.hero.hp ?? st.maxHP) - damageTaken), 0, st.maxHP);
           next.hero = { ...next.hero, hp: newHP };
+
+          // resolve
           if (next.enemy.hp <= 0) {
             const bonesGain = Math.ceil((3 + Math.random() * 3) * st.lootMult * (next.enemy.isBoss ? 5 : 1));
             const gloomChance = next.enemy.isBoss ? 0.45 : 0.35;
@@ -377,6 +437,7 @@ useEffect(() => {
                 : 0;
             const soulGain = Math.ceil((2 + Math.random() * 4) * st.lootMult * (next.enemy.isBoss ? 4 : 1));
             const crystalGain = next.enemy.isBoss && Math.random() < 0.35 ? 1 : 0;
+
             next.resources = {
               ...next.resources,
               bones: (next.resources.bones || 0) + bonesGain,
@@ -386,13 +447,16 @@ useEffect(() => {
             };
             next.totalKills += 1;
             next.killsThisStage += 1;
+
             const isBossNow = next.killsThisStage > 0 && next.killsThisStage % 10 === 0;
+
             const parts = [];
             if (bonesGain) parts.push(`🦴 +${bonesGain} Bones`);
             if (gloomGain) parts.push(`🌑 +${gloomGain} Gloom`);
             if (soulGain) parts.push(`🕯️ +${soulGain} Souls`);
             if (crystalGain) parts.push(`💎 +${crystalGain} Crystal${crystalGain > 1 ? "s" : ""}`);
             const lootMsg = parts.join(" • ");
+
             if (next.enemy.isBoss) {
               next = addLog(next, `Boss down: ${next.enemy.name}! ${lootMsg}`);
               next.enemy = null;
@@ -408,6 +472,7 @@ useEffect(() => {
             const bonesLost = Math.floor((next.resources.bones || 0) * 0.1);
             const gloomLost = Math.random() < 0.5 ? Math.floor((next.resources.gloom || 0) * 0.05) : 0;
             const crystalLost = 0;
+
             next.resources = {
               souls: Math.max(0, (next.resources.souls || 0) - soulsLost),
               bones: Math.max(0, (next.resources.bones || 0) - bonesLost),
@@ -424,29 +489,38 @@ useEffect(() => {
             );
           }
         }
+
         return next;
       });
     }, 1000);
     return () => clearInterval(tick);
   }, []);
 
+  /* ---------- UI state ---------- */
   const progressPct = ((state.killsThisStage % 10) / 10) * 100;
   const hpPct = Math.max(0, Math.floor((state.hero.hp / stats.maxHP) * 100));
   const hpColor =
     hpPct > 50 ? "from-green-600 to-green-700" : hpPct > 25 ? "from-amber-500 to-amber-600" : "from-red-600 to-red-700";
   const enemy = state.enemy;
-  const enemyPct = enemy ? Math.max(0, Math.floor((enemy.hp / enemy.maxHP) * 100)) : 100;
+  const enemyPct = enemy ? Math.max(0, Math.floor((enemy.hp / (enemy.maxHP || 1)) * 100)) : 100;
   const enemyColor =
     enemyPct > 50 ? "from-green-600 to-green-700" : enemyPct > 25 ? "from-amber-500 to-amber-600" : "from-red-600 to-red-700";
-  const [showInfo, setShowInfo] = useState(false);
+  const [showInfo, setShowInfo] = useState(false); // used for collapsible info
 
+  /* ---------- render ---------- */
   return (
     <div className="min-h-screen relative text-slate-900 dark:text-gray-100 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-50 via-slate-100 to-slate-200 dark:from-[#0b0c10] dark:via-[#08090c] dark:to-black">
       <div className="max-w-6xl mx-auto p-4 md:p-6 lg:p-8">
-        <header className="flex flex-col gap-2 md:gap-3">
+        {/* Header with title + login on the same row */}
+        <header className="flex items-center justify-between gap-3">
           <h1 className="text-2xl md:text-3xl font-black tracking-tight">Dark Idle</h1>
+          {/* Login moved here to top-right, inline with title */}
+          <div className="shrink-0">
+            <Auth />
+          </div>
         </header>
 
+        {/* Stage progress */}
         <div className="mt-4">
           <div className="text-xs uppercase tracking-wider text-slate-600 dark:text-gray-300 mb-1">Stage Progress</div>
           <div className="flex items-center gap-3 text-xs uppercase tracking-wider text-slate-600 dark:text-gray-300">
@@ -461,105 +535,112 @@ useEffect(() => {
         </div>
 
         <main className="mt-6 w-full">
-          <Auth />
+          {/* Fight panel */}
           <section>
             <div className="p-4 rounded-2xl bg-white/80 dark:bg-black/60 border border-slate-300/60 dark:border-white/10 shadow-2xl backdrop-blur-sm">
               {enemy && (
-  <div className="mt-3 rounded-xl p-6 bg-white/80 dark:bg-black/60 border border-slate-300/60 dark:border-white/10 overflow-hidden backdrop-blur-sm">
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
-      {/* Enemy column */}
-      <div className="text-center">
-        <div className="text-sm font-semibold uppercase tracking-wide text-gray-300 mb-2">Enemy</div>
-        <div className="text-2xl font-bold mb-4">
-          {enemy.name}
-          {enemy.isBoss && (
-            <span className="ml-2 text-[#b11e2f] text-xs font-bold bg-[#b11e2f]/10 px-2 py-0.5 rounded-full border border-[#b11e2f]/30 align-middle">
-              BOSS
-            </span>
-          )}
-        </div>
+                <div className="mt-3 rounded-xl p-6 bg-white/80 dark:bg-black/60 border border-slate-300/60 dark:border-white/10 overflow-hidden backdrop-blur-sm">
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
+                    {/* Enemy column */}
+                    <div className="text-center">
+                      <div className="text-sm font-semibold uppercase tracking-wide text-gray-300 mb-2">Enemy</div>
+                      <div className="text-2xl font-bold mb-4">
+                        {enemy.name}
+                        {enemy.isBoss && (
+                          <span className="ml-2 text-[#b11e2f] text-xs font-bold bg-[#b11e2f]/10 px-2 py-0.5 rounded-full border border-[#b11e2f]/30 align-middle">
+                            BOSS
+                          </span>
+                        )}
+                      </div>
 
-        <div className="relative mx-auto w-56 h-56 rounded-full flex items-center justify-center bg-black/40 border border-white/10">
-          {atlas ? <EnemyArt enemy={enemy} atlas={atlas} size={192} /> : <EnemySVG boss={enemy.isBoss} />}
-          <div className="absolute -bottom-3 -right-3 w-16 h-16 rounded-full bg-white/95 dark:bg-black/90 border border-slate-300/60 dark:border-white/10 flex flex-col items-center justify-center shadow">
-            <div className="text-[10px] uppercase opacity-70 leading-none">DPS</div>
-            <div className="text-xl font-bold leading-tight">{Math.floor(enemy.dps)}</div>
-          </div>
-        </div>
+                      <div className="relative mx-auto w-56 h-56 rounded-full flex items-center justify-center bg-black/40 border border-white/10">
+                        {atlas ? <EnemyArt enemy={enemy} atlas={atlas} size={192} /> : <EnemySVG boss={enemy.isBoss} />}
+                        <div className="absolute -bottom-3 -right-3 w-16 h-16 rounded-full bg-white/95 dark:bg-black/90 border border-slate-300/60 dark:border-white/10 flex flex-col items-center justify-center shadow">
+                          <div className="text-[10px] uppercase opacity-70 leading-none">DPS</div>
+                          <div className="text-xl font-bold leading-tight">{Math.floor(enemy.dps)}</div>
+                        </div>
+                      </div>
 
-        <div className="mt-5 max-w-sm mx-auto">
-          <div className="h-4 bg-slate-200/60 dark:bg-black/70 rounded-full overflow-hidden shadow-inner">
-            <div
-              className={`h-full bg-gradient-to-r ${enemyColor}`}
-              style={{ width: `${enemyPct}%` }}
-            />
-          </div>
-          <div className="mt-1 text-sm opacity-90">HP {Math.floor(enemy.hp)} / {enemy.maxHP}</div>
-        </div>
-      </div>
+                      <div className="mt-5 max-w-sm mx-auto">
+                        <div className="h-4 bg-slate-200/60 dark:bg-black/70 rounded-full overflow-hidden shadow-inner">
+                          <div className={`h-full bg-gradient-to-r ${enemyColor}`} style={{ width: `${enemyPct}%` }} />
+                        </div>
+                        <div className="mt-1 text-sm opacity-90">
+                          HP {Math.floor(enemy.hp)} / {enemy.maxHP}
+                        </div>
+                      </div>
+                    </div>
 
-      {/* VS */}
-      <div className="hidden lg:flex items-center justify-center">
-        <div className="text-4xl font-black opacity-70 select-none">VS</div>
-      </div>
+                    {/* VS */}
+                    <div className="hidden lg:flex items-center justify-center">
+                      <div className="text-4xl font-black opacity-70 select-none">VS</div>
+                    </div>
 
-      {/* Player column */}
-      <div className="text-center">
-        <div className="text-sm font-semibold uppercase tracking-wide text-gray-300 mb-2">You</div>
-        <div className="text-2xl font-bold mb-4">The Protagonist</div>
+                    {/* Player column */}
+                    <div className="text-center">
+                      <div className="text-sm font-semibold uppercase tracking-wide text-gray-300 mb-2">You</div>
+                      <div className="text-2xl font-bold mb-4">The Protagonist</div>
 
-        <div className="relative mx-auto w-56 h-56 rounded-full flex items-center justify-center bg-black/40 border border-white/10">
-          <PlayerSVG />
-          <div className="absolute -bottom-3 -right-3 w-16 h-16 rounded-full bg-white/95 dark:bg-black/90 border border-slate-300/60 dark:border-white/10 flex flex-col items-center justify-center shadow">
-            <div className="text-[10px] uppercase opacity-70 leading-none">DPS</div>
-            <div className="text-xl font-bold leading-tight">{Math.floor(stats.dps)}</div>
-          </div>
-        </div>
+                      <div className="relative mx-auto w-56 h-56 rounded-full flex items-center justify-center bg-black/40 border border-white/10">
+                        <PlayerSVG />
+                        <div className="absolute -bottom-3 -right-3 w-16 h-16 rounded-full bg-white/95 dark:bg-black/90 border border-slate-300/60 dark:border-white/10 flex flex-col items-center justify-center shadow">
+                          <div className="text-[10px] uppercase opacity-70 leading-none">DPS</div>
+                          <div className="text-xl font-bold leading-tight">{Math.floor(stats.dps)}</div>
+                        </div>
+                      </div>
 
-        <div className="mt-5 max-w-sm mx-auto">
-          <div className="h-4 bg-slate-200/60 dark:bg-black/70 rounded-full overflow-hidden shadow-inner">
-            <div
-              className={`h-full bg-gradient-to-r ${hpColor}`}
-              style={{ width: `${Math.max(0, Math.min(100, hpPct))}%` }}
-            />
-          </div>
-          <div className="mt-1 text-sm opacity-90">HP {Math.floor(state.hero.hp)} / {stats.maxHP}</div>
-        </div>
+                      <div className="mt-5 max-w-sm mx-auto">
+                        <div className="h-4 bg-slate-200/60 dark:bg-black/70 rounded-full overflow-hidden shadow-inner">
+                          <div className={`h-full bg-gradient-to-r ${hpColor}`} style={{ width: `${Math.max(0, Math.min(100, hpPct))}%` }} />
+                        </div>
+                        <div className="mt-1 text-sm opacity-90">
+                          HP {Math.floor(state.hero.hp)} / {stats.maxHP}
+                        </div>
+                      </div>
 
-        <div className="mt-4 text-sm opacity-90 flex items-center justify-center gap-6">
-          <div>APS {stats.aps.toFixed(1)}</div>
-          <div className="h-4 w-px bg-white/20" />
-          <div>DR {stats.dr}</div>
-          <div className="h-4 w-px bg-white/20" />
-          <div>SG {stats.soulsPerSec.toFixed(1)}/s</div>
-        </div>
-      </div>
-    </div>
+                      <div className="mt-4 text-sm opacity-90 flex items-center justify-center gap-6">
+                        <div>APS {stats.aps.toFixed(1)}</div>
+                        <div className="h-4 w-px bg-white/20" />
+                        <div>DR {stats.dr}</div>
+                        <div className="h-4 w-px bg-white/20" />
+                        <div>SG {stats.soulsPerSec.toFixed(1)}/s</div>
+                      </div>
+                    </div>
+                  </div>
 
-    {/* Big bottom buttons */}
-    <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-      <button
-        onClick={hit}
-        className="w-full text-center px-6 py-6 rounded-xl font-extrabold text-2xl tracking-wide text-white bg-gradient-to-r from-[#6b0f1a] to-[#3a1d5d] hover:opacity-95 shadow-lg"
-      >
-        STRIKE
-        <div className="mt-1 text-xs font-normal opacity-80">(Space Bar)</div>
-      </button>
-      <button
-        onClick={heal}
-        disabled={(state.resources.souls || 0) < state.settings.healCostSouls || state.hero.hp === stats.maxHP}
-        className="w-full text-center px-6 py-6 rounded-xl font-extrabold text-2xl tracking-wide text-white bg-gradient-to-r from-[#3a1d5d] to-[#6b0f1a] disabled:opacity-50 hover:opacity-95 shadow-lg"
-      >
-        HEAL
-        <div className="mt-1 text-xs font-normal opacity-80">(Shift) (cost: {state.settings.healCostSouls} souls)</div>
-      </button>
-    </div>
-  </div>
-)}
+                  {/* Big bottom buttons */}
+                  <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <button
+                      onClick={hit}
+                      className="w-full text-center px-6 py-6 rounded-xl font-extrabold text-2xl tracking-wide text-white bg-gradient-to-r from-[#6b0f1a] to-[#3a1d5d] hover:opacity-95 shadow-lg"
+                    >
+                      STRIKE
+                      <div className="mt-1 text-xs font-normal opacity-80">(Space Bar)</div>
+                    </button>
+                    <button
+                      onClick={heal}
+                      disabled={(state.resources.souls || 0) < state.settings.healCostSouls || state.hero.hp === stats.maxHP}
+                      className="w-full text-center px-6 py-6 rounded-xl font-extrabold text-2xl tracking-wide text-white bg-gradient-to-r from-[#3a1d5d] to-[#6b0f1a] disabled:opacity-50 hover:opacity-95 shadow-lg"
+                    >
+                      HEAL
+                      <div className="mt-1 text-xs font-normal opacity-80">(Shift) (cost: {state.settings.healCostSouls} souls)</div>
+                    </button>
+                  </div>
+                </div>
+              )}
 
+              {/* --- Loot Log (re-added) --- */}
+              <div className="mt-4 h-40 overflow-y-auto text-sm space-y-1 pr-2 rounded-lg bg-white/70 dark:bg-black/80 border border-slate-300/60 dark:border-white/10 p-2">
+                {state.log.map((line, i) => (
+                  <div key={i} className="text-slate-800 dark:text-gray-100">
+                    • {line}
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
 
+          {/* Resources */}
           <section className="mt-6">
             <h3 className="text-lg font-semibold">Resources</h3>
             <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
@@ -570,6 +651,7 @@ useEffect(() => {
             </div>
           </section>
 
+          {/* Crafting */}
           <section className="mt-6">
             <h3 className="text-lg font-semibold">Crafting</h3>
             <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -633,8 +715,62 @@ useEffect(() => {
               <span className="text-xs text-slate-500 dark:text-gray-400">Auto-saves every tick</span>
             </div>
           </section>
+
+          {/* Collapsible info (drop rates & death penalties) — restored */}
+          <section className="mt-6">
+            <button
+              onClick={() => setShowInfo((v) => !v)}
+              className="px-4 py-2 rounded-xl font-semibold text-white bg-gradient-to-r from-[#3a1d5d] to-[#6b0f1a] border border-white/10"
+              aria-expanded={showInfo}
+              aria-controls="game-info"
+            >
+              {showInfo ? "Hide Info" : "Show Info"}
+            </button>
+
+            {showInfo && (
+              <div id="game-info" className="mt-3 space-y-3">
+                <div className="rounded-2xl bg-white/80 dark:bg-black/60 border border-slate-300/60 dark:border-white/10 overflow-hidden">
+                  <h3 className="px-3 pt-3 text-lg font-semibold">Drops & Probabilities</h3>
+                  <table className="w-full text-sm mt-2">
+                    <thead className="bg-slate-200 dark:bg-black/70">
+                      <tr>
+                        <th className="text-left px-3 py-2">Context</th>
+                        <th className="text-left px-3 py-2">Resource</th>
+                        <th className="text-left px-3 py-2">Chance</th>
+                        <th className="text-left px-3 py-2">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-300/60 dark:divide-white/10">
+                      <tr><td className="px-3 py-2">Normal kill</td><td className="px-3 py-2">Bones</td><td className="px-3 py-2">100%</td><td className="px-3 py-2">3–6 × loot bonus</td></tr>
+                      <tr><td className="px-3 py-2">Normal kill</td><td className="px-3 py-2">Gloom</td><td className="px-3 py-2">35%</td><td className="px-3 py-2">1–3 × loot bonus</td></tr>
+                      <tr><td className="px-3 py-2">Normal kill</td><td className="px-3 py-2">Souls</td><td className="px-3 py-2">100%</td><td className="px-3 py-2">2–6 × loot bonus</td></tr>
+                      <tr><td className="px-3 py-2">Boss kill</td><td className="px-3 py-2">Bones</td><td className="px-3 py-2">100%</td><td className="px-3 py-2">15–30 × loot bonus</td></tr>
+                      <tr><td className="px-3 py-2">Boss kill</td><td className="px-3 py-2">Gloom</td><td className="px-3 py-2">45%</td><td className="px-3 py-2">3–9 × loot bonus</td></tr>
+                      <tr><td className="px-3 py-2">Boss kill</td><td className="px-3 py-2">Souls</td><td className="px-3 py-2">100%</td><td className="px-3 py-2">8–24 × loot bonus</td></tr>
+                      <tr><td className="px-3 py-2">Boss kill</td><td className="px-3 py-2">Crystal</td><td className="px-3 py-2">35%</td><td className="px-3 py-2">1</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="px-3 py-2 text-xs text-slate-500 dark:text-gray-400 border-t border-slate-300/60 dark:border-white/10">
+                    All amounts are multiplied by your loot bonus. Bosses occur every 10th kill.
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-white/80 dark:bg-black/60 border border-slate-300/60 dark:border-white/10 p-3 text-xs text-slate-700 dark:text-gray-300">
+                  <div className="font-semibold mb-1">Death Penalties</div>
+                  <ul className="list-disc ml-5 space-y-1">
+                    <li>Souls: lose 20%.</li>
+                    <li>Bones: lose 10%.</li>
+                    <li>Gloom: 50% chance to lose 5%.</li>
+                    <li>Crystals: never lost.</li>
+                    <li>Drop back one stage and reset progress.</li>
+                  </ul>
+                </div>
+              </div>
+            )}
+          </section>
         </main>
 
+        {/* Controls & tip */}
         <div className="mt-6 rounded-xl bg-white/80 dark:bg-black/60 border border-slate-300/60 dark:border-white/10 p-3 text-xs text-slate-600 dark:text-gray-300 flex items-center gap-4">
           <span>Controls:</span>
           <span className="px-2 py-1 rounded bg-white/70 dark:bg-black/40 border border-slate-300/60 dark:border-white/10">Space</span>
@@ -651,6 +787,7 @@ useEffect(() => {
   );
 }
 
+/* ---------- small UI bits ---------- */
 function Stat({ label, value }) {
   return (
     <div className="rounded-xl bg-white/80 dark:bg-black/60 border border-slate-300/60 dark:border-white/10 px-3 py-2">
@@ -668,68 +805,5 @@ function Res({ label, value, icon }) {
       </span>
       <span className="font-semibold">{value}</span>
     </div>
-  );
-}
-
-function EnemySVG({ boss }) {
-  return boss ? (
-    <BossSVG />
-  ) : (
-    <svg viewBox="0 0 120 120" className="w-28 h-28 flex-none">
-      <defs>
-        <radialGradient id="g1" cx="50%" cy="40%" r="60%">
-          <stop offset="0%" stopColor="#6b4a8e" stopOpacity="0.8" />
-          <stop offset="100%" stopColor="#221436" stopOpacity="0.1" />
-        </radialGradient>
-      </defs>
-      <circle cx="60" cy="60" r="48" fill="url(#g1)" stroke="#5b2a86" strokeOpacity="0.5" strokeWidth="2" />
-      <circle cx="45" cy="55" r="6" fill="#fff" />
-      <circle cx="75" cy="55" r="6" fill="#fff" />
-      <path d="M40,80 Q60,65 80,80" stroke="#b11e2f" strokeWidth="4" fill="none" />
-      <path d="M28 40 L92 40" stroke="rgba(255,255,255,0.1)" strokeWidth="4" />
-      <text x="60" y="110" textAnchor="middle" fontSize="10" fill="#8f5da2">
-        gloomblob
-      </text>
-    </svg>
-  );
-}
-
-function BossSVG() {
-  return (
-    <svg viewBox="0 0 140 140" className="w-32 h-32 flex-none">
-      <defs>
-        <radialGradient id="g2" cx="50%" cy="50%" r="60%">
-          <stop offset="0%" stopColor="#b11e2f" stopOpacity="0.9" />
-          <stop offset="100%" stopColor="#3a1d5d" stopOpacity="0.2" />
-        </radialGradient>
-      </defs>
-      <rect x="10" y="25" width="120" height="90" rx="18" fill="url(#g2)" stroke="#b11e2f" strokeOpacity="0.6" strokeWidth="2" />
-      <circle cx="50" cy="60" r="8" fill="#fff" />
-      <circle cx="90" cy="60" r="8" fill="#fff" />
-      <path d="M45,90 C60,75 80,75 95,90" stroke="#3a1d5d" strokeWidth="5" fill="none" />
-      <path d="M30 35 L110 35" stroke="rgba(255,255,255,0.2)" strokeWidth="5" />
-      <polygon points="65,22 75,22 70,10" fill="#b08d57" />
-      <text x="70" y="120" textAnchor="middle" fontSize="10" fill="#b08d57">
-        middle-management demon
-      </text>
-    </svg>
-  );
-}
-
-function PlayerSVG() {
-  return (
-    <svg viewBox="0 0 120 140" className="w-28 h-32 flex-none">
-      <defs>
-        <linearGradient id="pg" x1="0" x2="1">
-          <stop offset="0%" stopColor="#64748b" />
-          <stop offset="100%" stopColor="#94a3b8" />
-        </linearGradient>
-      </defs>
-      <circle cx="60" cy="45" r="28" fill="#cbd5e1" stroke="#94a3b8" strokeWidth="3" />
-      <rect x="28" y="78" width="64" height="44" rx="10" fill="url(#pg)" stroke="#475569" strokeWidth="3" />
-      <circle cx="48" cy="42" r="5" fill="#0f172a" />
-      <circle cx="72" cy="42" r="5" fill="#0f172a" />
-      <path d="M45,58 Q60,52 75,58" stroke="#0f172a" strokeWidth="4" fill="none" />
-    </svg>
   );
 }
