@@ -34,6 +34,16 @@ const bossNames = [
   "The Compliance Hydra",
 ];
 
+const [userId, setUserId] = useState(null);
+
+useEffect(() => {
+  supabase.auth.getSession().then(({ data }) => setUserId(data?.session?.user?.id ?? null));
+  const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+    setUserId(session?.user?.id ?? null);
+  });
+  return () => sub.subscription.unsubscribe();
+}, []);
+
 const BASE_ITEMS = [
   { id: "dagger", name: "Rusty Shiv of Regret", desc: "+1 DPS per level. Smells like mistakes.", baseCost: { bones: 10 }, costScale: 1.35, max: 100, effect: (lvl) => ({ dpsFlat: lvl * 1 }) },
   { id: "helm", name: "Spiked Helm of Overthinking", desc: "+5 Max HP per level. Mind the spikes.", baseCost: { bones: 20, gloom: 5 }, costScale: 1.4, max: 100, effect: (lvl) => ({ hpFlat: lvl * 5 }) },
@@ -335,14 +345,23 @@ export default function DarkIdle() {
     return () => sub.subscription.unsubscribe();
   }, []); // eslint-disable-line
 
-  const saveToCloud = async (userId, snapshot) => {
-    const payload = { ...snapshot, _updatedAt: new Date().toISOString() };
-    await supabase.from("dark_idle_saves").upsert({
-      user_id: userId,
-      data: payload,
-      version: payload.version ?? defaultState.version,
-    });
-  };
+const saveToCloud = async (userId, snapshot) => {
+  const payload = { ...snapshot, _updatedAt: new Date().toISOString() };
+  const { error } = await supabase
+    .from("dark_idle_saves")
+    .upsert(
+      {
+        user_id: userId,
+        data: payload,
+        version: payload.version ?? defaultState.version,
+      },
+      { onConflict: "user_id" } // <-- important when the unique constraint exists
+    );
+  if (error) {
+    console.error("saveToCloud error", error);
+  }
+};
+
 
   function debounce(fn, ms) {
     let t;
@@ -352,14 +371,27 @@ export default function DarkIdle() {
     };
   }
   const pushCloudDebounced = useMemo(() => debounce(saveToCloud, 1500), []);
+  
+  const [userId, setUserId] = useState(null);
+useEffect(() => {
+  supabase.auth.getSession().then(({ data }) => {
+    setUserId(data?.session?.user?.id ?? null);
+  });
+  const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+    setUserId(session?.user?.id ?? null);
+  });
+  return () => sub.subscription.unsubscribe();
+}, []);
+
+useEffect(() => {
+  localStorage.setItem("dark-idle-save", JSON.stringify(state));
+  if (!userId) return;              // not signed in → local only
+  pushCloudDebounced(userId, state); // signed in → debounce + upsert
+}, [state, userId]);
 
   useEffect(() => {
-    localStorage.setItem("dark-idle-save", JSON.stringify(state));
-    supabase.auth.getUser().then(({ data }) => {
-      const user = data?.user;
-      if (user) pushCloudDebounced(user.id, state);
-    });
-  }, [state]); // eslint-disable-line
+  localStorage.setItem("dark-idle-save", JSON.stringify(state));
+}, [state]);
 
   // enemy spawn
   useEffect(() => {
